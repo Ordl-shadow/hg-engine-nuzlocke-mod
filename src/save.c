@@ -1,4 +1,5 @@
 #include "../include/nuzlocke/newgame_config.h"
+#include "../include/system.h"
 #include "../include/types.h"
 #include "../include/config.h"
 #include "../include/debug.h"
@@ -256,7 +257,7 @@ int Save_NowWriteFile_AfterMGInit(SaveData *saveData, int a1) {
 
 void Save_InitDynamicRegion(SaveData *saveData) {
     saveData->isNewGame = TRUE;
-    NewGameConfig_TriggerOnNewGame();
+    if (gSystem.vblankCounter > 60) { NewGameConfig_TriggerOnNewGame(); }
     saveData->sectorCleanFlag[0] = 1;
     saveData->sectorCleanFlag[1] = 1;
     Save_InitDynamicRegion_Internal(saveData->dynamic_region, saveData->arrayHeaders);
