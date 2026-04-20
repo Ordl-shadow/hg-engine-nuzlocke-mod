@@ -1,6 +1,6 @@
 #include "../include/nuzlocke/newgame_config.h"
-#include "../include/types.h"
 #include "../include/system.h"
+#include "../include/types.h"
 #include "../include/config.h"
 #include "../include/debug.h"
 #include "../include/message.h"
@@ -257,8 +257,6 @@ int Save_NowWriteFile_AfterMGInit(SaveData *saveData, int a1) {
 
 void Save_InitDynamicRegion(SaveData *saveData) {
     saveData->isNewGame = TRUE;
-    /* Init defaults; trigger menu after boot delay */
-    NewGameConfig_InitOnBoot();
     if (gSystem.vblankCounter > 60) { NewGameConfig_TriggerOnNewGame(); }
     saveData->sectorCleanFlag[0] = 1;
     saveData->sectorCleanFlag[1] = 1;
