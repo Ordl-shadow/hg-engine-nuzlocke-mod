@@ -107,6 +107,20 @@ typedef struct BgTemplate {
     u32 mosaic;
 } BgTemplate;
 
+/* GraphicsBanks must match GfGfx_SetBanks expectation (10 x u32) */
+typedef struct GraphicsBanks {
+    u32 bg;
+    u32 bgextpltt;
+    u32 subbg;
+    u32 subbgextpltt;
+    u32 obj;
+    u32 objextpltt;
+    u32 subobj;
+    u32 subobjextpltt;
+    u32 tex;
+    u32 texpltt;
+} GraphicsBanks;
+
 static const GraphicsModes sMenuGraphicsModes = { 1, 0, 0, 0 };
 
 static const BgTemplate sMenuBgTemplate = {
@@ -116,7 +130,19 @@ static const BgTemplate sMenuBgTemplate = {
     0
 };
 
-static const u8 sMenuBanksConfig[8] = { 3, 0, 3, 0, 0, 0, 0, 0 };
+/* VRAM: 256KB main BG (banks A+B), no sub BG, no OBJ, no texture */
+static const GraphicsBanks sMenuBanks = {
+    .bg         = 3,   /* GX_VRAM_BG_256_AB */
+    .bgextpltt  = 0,   /* GX_VRAM_BGEXTPLTT_NONE */
+    .subbg      = 0,   /* GX_VRAM_SUB_BG_NONE */
+    .subbgextpltt = 0, /* GX_VRAM_SUB_BGEXTPLTT_NONE */
+    .obj        = 0,   /* GX_VRAM_OBJ_NONE */
+    .objextpltt = 0,   /* GX_VRAM_OBJEXTPLTT_NONE */
+    .subobj     = 0,   /* GX_VRAM_SUB_OBJ_NONE */
+    .subobjextpltt = 0, /* GX_VRAM_SUB_OBJEXTPLTT_NONE */
+    .tex        = 0,   /* GX_VRAM_TEX_NONE */
+    .texpltt    = 0,   /* GX_VRAM_TEXPLTT_NONE */
+};
 
 /* ---- Window template for the text area ----------------------------------- */
 static const WindowTemplate sWinTemplate = {
@@ -450,8 +476,8 @@ static void MenuGfx_Init(void)
         *dispB &= ~(1 << 26);
     }
 
-    /* Set VRAM banks from local config */
-    GfGfx_SetBanks((void *)&sMenuBanksConfig);
+    /* Set VRAM banks from proper struct */
+    GfGfx_SetBanks((void *)&sMenuBanks);
 
     /* Init BG from local template */
     InitBgFromTemplate(bgConfig, MENU_BG_ID, (void *)&sMenuBgTemplate, 0);
@@ -698,45 +724,48 @@ u8 NewGameConfig_IsTrainerTeamsRandomized(void){ return sSaved.randomize_trainer
 
 /* ---- Menu trigger / control ---------------------------------------------- */
 
-/* External declarations for overlay 36 hook */
-extern const void *gApplication_OakSpeech;
-extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
-extern void LONG_CALL Heap_Destroy(u32 heapId);
+/* ---- Hook function for overlay 36 TitleScreen NewGame exit — shows menu BEFORE OakSpeech ----
+ * 
+ * This is a FULL FUNCTION REPLACEMENT (register 255) of 
+ * ov36_TitleScreen_NewGame_AppExit at 0x021E5B48.
+ * 
+ * We register a SysTask to run the menu asynchronously, then block
+ * cleanly with OS_WaitIrq until the player confirms. The SysTask
+ * handles all rendering and input on VBlank.                              */
 
-/* Hook function for overlay 53 OakSpeech Init — shows menu in proper display context */
-BOOL LONG_CALL NewGameConfig_Hook_OakSpeechInit(void *man, int *state)
+BOOL LONG_CALL NewGameConfig_Hook_AppExit(void)
 {
-    (void)man; (void)state;
-
     /* Initialize config menu state */
     sTemp = sSaved;
     sCursorPos = 0;
     sConfirmed = 0;
     sMenuActive = 1;
     sDrawPending = 1;
+    sDelayCounter = 0;
+    sLastDrawVBlank = gSystem.vblankCounter;
 
-    /* INIT DISPLAY — this was missing! */
-    MenuGfx_Init();
-
-    /* BLOCKING MENU LOOP: Run menu synchronously until player confirms */
-    while (sMenuActive) {
-        OS_WaitIrq(TRUE, 1);
-        HandleInput();
-        if (sDrawPending || (gSystem.vblankCounter - sLastDrawVBlank >= MENU_DRAW_INTERVAL)) {
-            sLastDrawVBlank = gSystem.vblankCounter;
-            sDrawPending = 0;
-            if (sGfxInitDone) {
-                MenuText_DrawAll();
-            }
-        }
+    /* Register SysTask to handle menu lifecycle */
+    if (!sMenuTask) {
+        sMenuTask = CreateSysTask(ConfigMenuTaskCB, NULL, 0);
     }
 
-    /* Menu closed: shut down graphics */
+    /* Block until player confirms/cancels — SysTask runs on VBlank */
+    while (sMenuActive) {
+        OS_WaitIrq(TRUE, 1);  /* OS_IE_V_BLANK = 1 */
+    }
+
+    /* Clean up graphics after menu closes */
     if (sGfxInitDone) {
         MenuGfx_Shutdown();
     }
 
-    /* Return TRUE to let OakSpeech continue normally */
+    /* Destroy SysTask */
+    if (sMenuTask) {
+        DestroySysTask(sMenuTask);
+        sMenuTask = NULL;
+    }
+
+    /* Return TRUE to continue loading OakSpeech normally */
     return TRUE;
 }
 
