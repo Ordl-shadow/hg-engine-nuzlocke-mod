@@ -257,9 +257,8 @@ int Save_NowWriteFile_AfterMGInit(SaveData *saveData, int a1) {
 
 void Save_InitDynamicRegion(SaveData *saveData) {
     saveData->isNewGame = TRUE;
-    /* Init defaults; trigger menu after boot delay */
+    /* Init defaults; menu trigger moved to overlay_36 exit */
     NewGameConfig_InitOnBoot();
-    if (gSystem.vblankCounter > 60) { NewGameConfig_TriggerOnNewGame(); }
     saveData->sectorCleanFlag[0] = 1;
     saveData->sectorCleanFlag[1] = 1;
     Save_InitDynamicRegion_Internal(saveData->dynamic_region, saveData->arrayHeaders);
