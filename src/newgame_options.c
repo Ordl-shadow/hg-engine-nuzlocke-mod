@@ -82,6 +82,39 @@ static const u8 sCatMax[] = {
 
 static const u8 sCatCount = CONFIG_CATEGORY_COUNT;
 
+/* ---- Local display init structs (do NOT read from other overlays) ------- */
+static const GraphicsModes sMenuGraphicsModes = {
+    GX_DISPMODE_GRAPHICS,
+    GX_BGMODE_0,
+    GX_BGMODE_0,
+    GX_BG0_AS_2D,
+};
+
+static const BgTemplate sMenuBgTemplate = {
+    0, 0,
+    GX_BG_COLORMODE_16,
+    GX_BG_SCRBASE_0x0000,
+    GX_BG_CHARBASE_0x04000,
+    GX_BG_EXTPLTT_01,
+    0,
+    0,
+};
+
+static const GFBgModeSet sMenuBgModeSet = {
+    GX_BGMODE_0,
+    GX_BGMODE_0,
+    GX_BGMODE_0,
+    GX_BGMODE_0,
+    GX_BGMODE_0,
+    GX_BGMODE_0,
+    GX_BGMODE_0,
+    GX_BGMODE_0,
+};
+
+static const UnkStruct_02099F80 sMenuBanksConfig = {
+    0x3, 0xC, 0, 0, 0, 0, 0, 0
+};
+
 /* ---- Window template for the text area ----------------------------------- */
 static const WindowTemplate sWinTemplate = {
     MENU_BG_ID,
@@ -129,7 +162,7 @@ static const WindowTemplate sWinTemplate = {
             }
             sMenuStringBuf->data[i] = code;
         }
-        sMenuStringBuf->data[i] = 0;
+        sMenuStringBuf->data[i] = 0xFFFF;
         sMenuStringBuf->size    = i;
     }
 
@@ -403,8 +436,8 @@ static void MenuGfx_Init(void)
     GX_SetVisiblePlane(0);
     GXS_SetVisiblePlane(0);
 
-    /* Set screen mode from scratch */
-    SetBothScreensModesAndDisable((void *)0x02108530);
+    /* Set screen mode from local config */
+    SetBothScreensModesAndDisable(&sMenuGraphicsModes);
 
     /* Disable extended palette mode */
     {
@@ -414,11 +447,11 @@ static void MenuGfx_Init(void)
         *dispB &= ~(1 << 26);
     }
 
-    /* Set VRAM banks */
-    GfGfx_SetBanks((void *)0x0210855C);
+    /* Set VRAM banks from local config */
+    GfGfx_SetBanks(&sMenuBanksConfig);
 
-    /* Init BG0 from template */
-    InitBgFromTemplate(bgConfig, MENU_BG_ID, (void *)0x02108540, 0);
+    /* Init BG from local template */
+    InitBgFromTemplate(bgConfig, MENU_BG_ID, &sMenuBgTemplate, 0);
     BgClearTilemapBufferAndCommit(bgConfig, MENU_BG_ID);
 
     /* Load UI frame graphics */
