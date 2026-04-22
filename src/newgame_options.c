@@ -177,8 +177,10 @@ static void DrawLoading(void)
     SetBackdrop(phase < 10 ? GX_RGB(0, 31, 0) : GX_RGB(0, 0, 0));   /* Green / Black */
 }
 
-/* ---- Improved layout matching Radical Red style --------------------------
- *  Left-aligned labels, right-aligned values, clean spacing, color coding   */
+/* ---- Post-menu callback -------------------------------------------------- */
+static void (*sPostMenuCallback)(void) = NULL;
+
+/* ---- Text-based menu rendering ------------------------------------------- */
 
 #define ROW_HEIGHT       14   /* Taller rows for readability */
 #define LABEL_X          4    /* Left margin for labels */
@@ -523,6 +525,15 @@ static void ConfigMenuTaskCB(SysTask *task, void *data)
 {
     (void)task; (void)data;
 
+    /* Post-menu callback: load OakSpeech after menu closes */
+    if (sPostMenuCallback) {
+        sPostMenuCallback();
+        sPostMenuCallback = NULL;
+        DestroySysTask(sMenuTask);
+        sMenuTask = NULL;
+        return;
+    }
+
     if (!sMenuActive) {
         /* Menu closing: shut down graphics */
         if (sGfxInitDone) {
@@ -661,6 +672,33 @@ u8 NewGameConfig_IsMovesetsRandomized(void)   { return sSaved.randomize_movesets
 u8 NewGameConfig_IsTrainerTeamsRandomized(void){ return sSaved.randomize_trainer_teams; }
 
 /* ---- Menu trigger / control ---------------------------------------------- */
+
+/* External declarations for overlay 36 hook */
+extern const void *gApplication_OakSpeech;
+extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
+extern void LONG_CALL Heap_Destroy(u32 heapId);
+
+static void LoadOakSpeechAfterMenu(void)
+{
+    RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
+}
+
+/* Hook function for overlay 36 AppExit — replaces original function */
+BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
+{
+    (void)man; (void)state;
+    
+    /* Destroy overlay 36 heap */
+    Heap_Destroy(36);  /* HEAP_ID_OV36 */
+    
+    /* Set callback to load OakSpeech after menu closes */
+    sPostMenuCallback = LoadOakSpeechAfterMenu;
+    
+    /* Trigger config menu (runs on clean BG slate) */
+    NewGameConfig_TriggerOnNewGame();
+    
+    return TRUE;
+}
 
 void NewGameConfig_TriggerOnNewGame(void)
 {
