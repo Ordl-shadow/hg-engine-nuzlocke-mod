@@ -503,9 +503,9 @@ static void MenuGfx_Init(void)
     /* Turn display ON */
     GfGfx_BothDispOn();
 
-    /* Set master brightness to NEUTRAL (not black) */
-    SetMasterBrightnessNeutral(0);
-    SetMasterBrightnessNeutral(1);
+    /* FORCE master brightness to neutral immediately (cancel any active fade) */
+    *(vu16 *)0x0400006C = 0;  /* Engine A */
+    *(vu16 *)0x0400106C = 0;  /* Engine B */
 
     sGfxInitDone = 1;
 }
@@ -523,7 +523,9 @@ static void MenuGfx_Shutdown(void)
         sBgConfig = NULL;
     }
 
-    /* No display state restore needed — OakSpeech will init its own display */
+    /* Restore master brightness to neutral for OakSpeech */
+    *(vu16 *)0x0400006C = 0;
+    *(vu16 *)0x0400106C = 0;
 
     sGfxInitDone = 0;
 }
