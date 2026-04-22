@@ -762,7 +762,7 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
     /* ---- Blocking loop: wait for player to confirm/cancel ---- */
     while (sMenuActive) {
         /* Service system tasks (VBlank, input, etc.) */
-        OS_WaitIrq(TRUE, OS_IE_V_BLANK);
+        OS_WaitIrq(TRUE, 1);
         
         /* Run our menu task callback manually in the hook context */
         ConfigMenuTaskCB(NULL, NULL);
