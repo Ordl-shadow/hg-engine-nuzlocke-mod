@@ -82,40 +82,41 @@ static const u8 sCatMax[] = {
 
 static const u8 sCatCount = CONFIG_CATEGORY_COUNT;
 
-/* ---- Local display init data (extracted from ARM9 binary at 0x02108530) --
- *  These are the exact bytes the title screen uses for display init.
- *  Defined locally so we don't depend on ARM9 memory addresses.
- *  Layout matches pret/pokeheartgold struct definitions. */
+/* ---- Local display init structs (verified against pret/pokeheartgold) ---- */
 
-/* GraphicsModes — 16 bytes */
-static const u8 sMenuGraphicsModes[16] = {
-    0x01, 0x00, 0x00, 0x00,  /* dispMode = GX_DISPMODE_GRAPHICS */
-    0x00, 0x00, 0x00, 0x00,  /* bgMode = GX_BGMODE_0 */
-    0x00, 0x00, 0x00, 0x00,  /* subMode = GX_BGMODE_0 */
-    0x00, 0x00, 0x00, 0x00,  /* _2d3dMode = GX_BG0_AS_2D */
+typedef struct GraphicsModes {
+    u32 dispMode;
+    u32 bgMode;
+    u32 subMode;
+    u32 _2d3dMode;
+} GraphicsModes;
+
+typedef struct BgTemplate {
+    u32 x;
+    u32 y;
+    u32 bufferSize;
+    u32 baseTile;
+    u8 size;
+    u8 colorMode;
+    u8 screenBase;
+    u8 charBase;
+    u8 bgExtPltt;
+    u8 priority;
+    u8 areaOver;
+    u8 dummy;
+    u32 mosaic;
+} BgTemplate;
+
+static const GraphicsModes sMenuGraphicsModes = { 1, 0, 0, 0 };
+
+static const BgTemplate sMenuBgTemplate = {
+    0, 0, 0x800, 0,
+    1, 0, 0, 6,
+    0, 1, 0, 0,
+    0
 };
 
-/* BgTemplate — 28 bytes (pret layout: x,y,bufferSize,baseTile, size,colorMode,screenBase,charBase, bgExtPltt,priority,areaOver,dummy, mosaic) */
-static const u8 sMenuBgTemplate[28] = {
-    0x00, 0x00, 0x00, 0x00,  /* x = 0 */
-    0x00, 0x00, 0x00, 0x00,  /* y = 0 */
-    0x00, 0x08, 0x00, 0x00,  /* bufferSize = 2048 (0x800) */
-    0x00, 0x00, 0x00, 0x00,  /* baseTile = 0 */
-    0x01,                     /* size = 1 */
-    0x00,                     /* colorMode = GX_BG_COLORMODE_16 */
-    0x00,                     /* screenBase = GX_BG_SCRBASE_0x0000 */
-    0x06,                     /* charBase = GX_BG_CHARBASE_0x18000 */
-    0x00,                     /* bgExtPltt = GX_BG_EXTPLTT_NONE */
-    0x01,                     /* priority = 1 */
-    0x00,                     /* areaOver = 0 */
-    0x00,                     /* dummy = 0 */
-    0x00, 0x00, 0x00, 0x00,  /* mosaic = 0 */
-};
-
-/* VRAM bank config — 8 bytes (GfGfx_SetBanks reads bank A from first byte) */
-static const u8 sMenuBanksConfig[8] = {
-    0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
+static const u8 sMenuBanksConfig[8] = { 3, 0, 3, 0, 0, 0, 0, 0 };
 
 /* ---- Window template for the text area ----------------------------------- */
 static const WindowTemplate sWinTemplate = {
@@ -459,8 +460,8 @@ static void MenuGfx_Init(void)
     /* Load UI frame graphics */
     LoadUserFrameGfx1(bgConfig, MENU_BG_ID, 0x1F7, 2, 0, 0);
 
-    /* Load font palette — CRITICAL: standard palette only */
-    LoadFontPal0(0, 0x20, 0);
+    /* Load font palette — CRITICAL: align with window template palette slot */
+    LoadFontPal0(0, 0x40, 0);
 
     /* Set BG colours */
     BG_SetMaskColor(MENU_BG_ID, RGB(15, 15, 15));
