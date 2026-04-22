@@ -588,20 +588,17 @@ static void ConfigMenuTaskCB(SysTask *task, void *data)
 {
     (void)task; (void)data;
 
-    /* Post-menu callback: load OakSpeech after menu closes */
-    if (sPostMenuCallback) {
-        sPostMenuCallback();
-        sPostMenuCallback = NULL;
-        DestroySysTask(sMenuTask);
-        sMenuTask = NULL;
-        return;
-    }
-
     if (!sMenuActive) {
-        /* Menu closing: shut down graphics */
+        /* Menu just closed: run post-menu callback first, then cleanup */
+        if (sPostMenuCallback) {
+            sPostMenuCallback();
+            sPostMenuCallback = NULL;
+        }
+        /* Shut down graphics */
         if (sGfxInitDone) {
             MenuGfx_Shutdown();
         }
+        /* Destroy self */
         if (sMenuTask) {
             DestroySysTask(sMenuTask);
             sMenuTask = NULL;
