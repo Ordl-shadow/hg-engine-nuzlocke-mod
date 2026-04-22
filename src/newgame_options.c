@@ -746,42 +746,6 @@ u8 NewGameConfig_IsTrainerTeamsRandomized(void){ return sSaved.randomize_trainer
 BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
 {
     (void)man; (void)state;
-
-    /* ---- Init menu state ---- */
-    sTemp           = sSaved;
-    sCursorPos      = 0;
-    sConfirmed      = 0;
-    sMenuActive     = 1;
-    sDrawPending    = 1;
-    sDelayCounter   = 0;
-    sLastDrawVBlank = gSystem.vblankCounter;
-
-    /* ---- Init display ---- */
-    MenuGfx_Init();
-
-    /* ---- Blocking menu loop: sleep on VBlank, handle input, redraw ---- */
-    while (sMenuActive) {
-        OS_WaitIrq(TRUE, 1);  /* OS_IE_V_BLANK = 1 */
-
-        HandleInput();
-
-        if (sDrawPending || (gSystem.vblankCounter - sLastDrawVBlank >= MENU_DRAW_INTERVAL)) {
-            sLastDrawVBlank = gSystem.vblankCounter;
-            sDrawPending = 0;
-            if (sGfxInitDone) {
-                MenuText_DrawAll();
-            }
-        }
-    }
-
-    /* ---- Menu closed — cleanup graphics ---- */
-    if (sGfxInitDone) {
-        MenuGfx_Shutdown();
-    }
-
-    /* ---- Load OakSpeech overlay ---- */
-    RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
-
     return TRUE;
 }
 
