@@ -206,6 +206,10 @@ static void MenuText_PrintAt(const char *text, u8 x, u8 row, u8 fgColor)
         (u32)MAKE_COLOR_IDX(fgColor, COLOUR_DARK, COLOUR_WHITE),  /* bg = white for readability */
         NULL
     );
+
+    /* CRITICAL: Flush text printer immediately so buffer isn't overwritten
+     * by next AsciiToString call before text engine draws it */
+    CopyWindowToVram(&sWindow);
 }
 
 static void MenuText_DrawHeader(void)
@@ -428,7 +432,7 @@ static void MenuGfx_Init(void)
 
     /* Create the text window */
     AddWindow(bgConfig, &sWindow, (void *)&sWinTemplate);
-    FillWindowPixelBuffer(&sWindow, 0xFF);
+    FillWindowPixelBuffer(&sWindow, 0);  /* FIX: 0 not 0xFF for proper clear */
     DrawFrameAndWindow1(&sWindow, FALSE, 0x1F7, 2);
 
     /* Reset text printers */
@@ -661,26 +665,42 @@ u8 NewGameConfig_IsTrainerTeamsRandomized(void){ return sSaved.randomize_trainer
 /* External declarations for overlay 36 hook */
 extern const void *gApplication_OakSpeech;
 extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
+extern void LONG_CALL Heap_Destroy(u32 heapId);
 
-static void LoadOakSpeechAfterMenu(void)
-{
-    RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
-}
-
-/* Hook function for overlay 36 AppExit — replaces original function */
-BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
+/* Hook function for overlay 53 OakSpeech Init — shows menu in proper display context */
+BOOL LONG_CALL NewGameConfig_Hook_OakSpeechInit(void *man, int *state)
 {
     (void)man; (void)state;
-    
-    /* Set callback to load OakSpeech after menu closes */
-    sPostMenuCallback = LoadOakSpeechAfterMenu;
-    
-    /* Trigger config menu (runs on clean BG slate) */
-    NewGameConfig_TriggerOnNewGame();
-    
-    /* Return TRUE so overlay manager thinks we're done.
-     * The menu SysTask keeps running in the background.
-     * Menu callback will load OakSpeech when player confirms. */
+
+    /* Initialize config menu state */
+    sTemp = sSaved;
+    sCursorPos = 0;
+    sConfirmed = 0;
+    sMenuActive = 1;
+    sDrawPending = 1;
+
+    /* INIT DISPLAY — this was missing! */
+    MenuGfx_Init();
+
+    /* BLOCKING MENU LOOP: Run menu synchronously until player confirms */
+    while (sMenuActive) {
+        OS_WaitIrq(TRUE, 1);
+        HandleInput();
+        if (sDrawPending || (gSystem.vblankCounter - sLastDrawVBlank >= MENU_DRAW_INTERVAL)) {
+            sLastDrawVBlank = gSystem.vblankCounter;
+            sDrawPending = 0;
+            if (sGfxInitDone) {
+                MenuText_DrawAll();
+            }
+        }
+    }
+
+    /* Menu closed: shut down graphics */
+    if (sGfxInitDone) {
+        MenuGfx_Shutdown();
+    }
+
+    /* Return TRUE to let OakSpeech continue normally */
     return TRUE;
 }
 

@@ -328,7 +328,7 @@ arm9 GrabCryNumSpeciesForm 02006A0C 2
 #endif
 
 # new game config menu hook — triggers BEFORE OakSpeech (full function replacement)
-0036 NewGameConfig_Hook_AppExit 021E5B48 255
+0053 NewGameConfig_Hook_OakSpeechInit 021E5900 0
 
 # need another hook for this one yeah yeah
 0012 ServerDoTypeCalcMod 02251D28
