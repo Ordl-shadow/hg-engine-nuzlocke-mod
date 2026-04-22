@@ -385,73 +385,61 @@ static void MenuGfx_Init(void)
         sMenuStringBuf = String_New(128, 0);
     }
 
-    /* Save existing display state before we reconfigure */
-    MenuGfx_SaveState();
-
     /* Allocate BG config for menu background */
     bgConfig = BgConfig_Alloc(0);
     if (!bgConfig) {
-        /* Fall back to palette-only feedback */
         sGfxInitDone = 0;
         return;
     }
     sBgConfig = bgConfig;
 
-    /* Set up BG0 as text mode, 256-colour palette */
-    sub_0200FBF4(0, 0);
-    sub_0200FBF4(1, 0);
-
+    /* NUCLEAR RESET: Disable everything first */
     GfGfx_DisableEngineAPlanes();
     GfGfx_DisableEngineBPlanes();
-
     GX_SetVisiblePlane(0);
     GXS_SetVisiblePlane(0);
 
-    SetKeyRepeatTimers(4, 8);
-    GfGfx_SwapDisplay();
-    G2_BlendNone();
-    G2S_BlendNone();
-    GX_SetVisibleWnd(0);
-    GXS_SetVisibleWnd(0);
+    /* Set screen mode from scratch */
+    SetBothScreensModesAndDisable((void *)0x02108530);
 
-    /* CRITICAL: Disable extended palette mode so standard palette writes work */
+    /* Disable extended palette mode */
     {
         vu32 *dispA = (vu32 *)0x04000000;
         vu32 *dispB = (vu32 *)0x04001000;
-        *dispA &= ~(1 << 26);  /* Clear EXT_PAL bit */
+        *dispA &= ~(1 << 26);
         *dispB &= ~(1 << 26);
     }
 
+    /* Set VRAM banks */
     GfGfx_SetBanks((void *)0x0210855C);
-
-    /* Set screen mode */
-    SetBothScreensModesAndDisable((void *)0x02108530);
 
     /* Init BG0 from template */
     InitBgFromTemplate(bgConfig, MENU_BG_ID, (void *)0x02108540, 0);
     BgClearTilemapBufferAndCommit(bgConfig, MENU_BG_ID);
 
-    /* Load UI frame graphics and font palette */
+    /* Load UI frame graphics */
     LoadUserFrameGfx1(bgConfig, MENU_BG_ID, 0x1F7, 2, 0, 0);
-    LoadFontPal0(0, 0x20, 0);        /* FIX: palette slot 0 instead of 2 */
-    /* REMOVED: BG_ClearCharDataRange() — wipes tiles the tutorial needs later */
+
+    /* Load font palette — CRITICAL: standard palette only */
+    LoadFontPal0(0, 0x20, 0);
 
     /* Set BG colours */
-    BG_SetMaskColor(MENU_BG_ID,     RGB(15, 15, 15));
-    BG_SetMaskColor(MENU_BG_ID + 4, RGB(15, 15, 15));
+    BG_SetMaskColor(MENU_BG_ID, RGB(15, 15, 15));
 
     /* Create the text window */
     AddWindow(bgConfig, &sWindow, (void *)&sWinTemplate);
     FillWindowPixelBuffer(&sWindow, 0xFF);
     DrawFrameAndWindow1(&sWindow, FALSE, 0x1F7, 2);
 
-    ResetAllTextPrinters();          /* FIX: clear stale text printer state */
+    /* Reset text printers */
+    ResetAllTextPrinters();
 
-    /* Turn display on */
+    /* Turn display ON */
     GfGfx_BothDispOn();
+
+    /* Set master brightness to NEUTRAL (not black) */
     SetMasterBrightnessNeutral(0);
     SetMasterBrightnessNeutral(1);
-    SetBlendBrightness(0, 0x3F, 3);
 
     sGfxInitDone = 1;
 }
@@ -469,10 +457,7 @@ static void MenuGfx_Shutdown(void)
         sBgConfig = NULL;
     }
 
-    /* Restore display state so OakSpeech / tutorial continues correctly */
-    MenuGfx_RestoreState();
-
-    /* Keep string buffer alive (reused if menu reopens) */
+    /* No display state restore needed — OakSpeech will init its own display */
 
     sGfxInitDone = 0;
 }
@@ -676,7 +661,6 @@ u8 NewGameConfig_IsTrainerTeamsRandomized(void){ return sSaved.randomize_trainer
 /* External declarations for overlay 36 hook */
 extern const void *gApplication_OakSpeech;
 extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
-extern void LONG_CALL Heap_Destroy(u32 heapId);
 
 static void LoadOakSpeechAfterMenu(void)
 {
@@ -688,15 +672,15 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
 {
     (void)man; (void)state;
     
-    /* Destroy overlay 36 heap */
-    Heap_Destroy(36);  /* HEAP_ID_OV36 */
-    
     /* Set callback to load OakSpeech after menu closes */
     sPostMenuCallback = LoadOakSpeechAfterMenu;
     
     /* Trigger config menu (runs on clean BG slate) */
     NewGameConfig_TriggerOnNewGame();
     
+    /* Return TRUE so overlay manager thinks we're done.
+     * The menu SysTask keeps running in the background.
+     * Menu callback will load OakSpeech when player confirms. */
     return TRUE;
 }
 
