@@ -738,28 +738,50 @@ u8 NewGameConfig_IsTrainerTeamsRandomized(void){ return sSaved.randomize_trainer
  * This is a FULL FUNCTION REPLACEMENT (register 255) of
  * ov36_TitleScreen_NewGame_AppExit at 0x021E5B48.
  *
- * Flow:
- *   1. Destroy title screen heap (free memory for menu)
- *   2. Set callback to load OakSpeech after menu closes
- *   3. Trigger config menu (SysTask runs it asynchronously)
- *   4. Return TRUE — title screen thinks exit is done
- *   5. SysTask shows menu → callback loads OakSpeech → game continues
+ * We block in this function until the player confirms/cancels the menu,
+ * then load OakSpeech and return.  The blocking loop uses OS_WaitIrq
+ * (sleep until VBlank) so it is not a busy-wait.
  */
 
 BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
 {
     (void)man; (void)state;
 
-    /* Destroy overlay 36 heap to free VRAM/memory for menu */
-    Heap_Destroy(36);
+    /* ---- Init menu state ---- */
+    sTemp           = sSaved;
+    sCursorPos      = 0;
+    sConfirmed      = 0;
+    sMenuActive     = 1;
+    sDrawPending    = 1;
+    sDelayCounter   = 0;
+    sLastDrawVBlank = gSystem.vblankCounter;
 
-    /* Set callback: SysTask will call this after player confirms menu */
-    sPostMenuCallback = LoadOakSpeechAfterMenu;
+    /* ---- Init display ---- */
+    MenuGfx_Init();
 
-    /* Start config menu via SysTask (non-blocking) */
-    NewGameConfig_TriggerOnNewGame();
+    /* ---- Blocking menu loop: sleep on VBlank, handle input, redraw ---- */
+    while (sMenuActive) {
+        OS_WaitIrq(TRUE, 1);  /* OS_IE_V_BLANK = 1 */
 
-    /* Return immediately — SysTask handles menu lifecycle */
+        HandleInput();
+
+        if (sDrawPending || (gSystem.vblankCounter - sLastDrawVBlank >= MENU_DRAW_INTERVAL)) {
+            sLastDrawVBlank = gSystem.vblankCounter;
+            sDrawPending = 0;
+            if (sGfxInitDone) {
+                MenuText_DrawAll();
+            }
+        }
+    }
+
+    /* ---- Menu closed — cleanup graphics ---- */
+    if (sGfxInitDone) {
+        MenuGfx_Shutdown();
+    }
+
+    /* ---- Load OakSpeech overlay ---- */
+    RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
+
     return TRUE;
 }
 
