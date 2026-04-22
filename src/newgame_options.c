@@ -242,6 +242,36 @@ static void DrawLoading(void)
 /* ---- Post-menu callback -------------------------------------------------- */
 static void (*sPostMenuCallback)(void) = NULL;
 
+static void LONG_CALL LoadOakSpeechAfterMenu(void)
+{
+    RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
+}
+
+/* External declarations for overlay 36 hook */
+extern const void *gApplication_OakSpeech;
+extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
+extern void LONG_CALL Heap_Destroy(u32 heapId);
+
+static void LONG_CALL LoadOakSpeechAfterMenu(void)
+{
+    RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
+}
+
+/* External declarations for overlay 36 hook */
+extern const void *gApplication_OakSpeech;
+extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
+extern void LONG_CALL Heap_Destroy(u32 heapId);
+
+static void LONG_CALL LoadOakSpeechAfterMenu(void)
+{
+    RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
+}
+
+/* External declarations for overlay 36 hook */
+extern const void *gApplication_OakSpeech;
+extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
+extern void LONG_CALL Heap_Destroy(u32 heapId);
+
 /* ---- Text-based menu rendering ------------------------------------------- */
 
 #define ROW_HEIGHT       14   /* Taller rows for readability */
@@ -727,47 +757,32 @@ u8 NewGameConfig_IsTrainerTeamsRandomized(void){ return sSaved.randomize_trainer
 /* ---- Menu trigger / control ---------------------------------------------- */
 
 /* ---- Hook function for overlay 36 TitleScreen NewGame exit — shows menu BEFORE OakSpeech ----
- * 
- * This is a FULL FUNCTION REPLACEMENT (register 255) of 
+ *
+ * This is a FULL FUNCTION REPLACEMENT (register 255) of
  * ov36_TitleScreen_NewGame_AppExit at 0x021E5B48.
- * 
- * We register a SysTask to run the menu asynchronously, then block
- * cleanly with OS_WaitIrq until the player confirms. The SysTask
- * handles all rendering and input on VBlank.                              */
+ *
+ * Flow:
+ *   1. Destroy title screen heap (free memory for menu)
+ *   2. Set callback to load OakSpeech after menu closes
+ *   3. Trigger config menu (SysTask runs it asynchronously)
+ *   4. Return TRUE — title screen thinks exit is done
+ *   5. SysTask shows menu → callback loads OakSpeech → game continues
+ */
 
-BOOL LONG_CALL NewGameConfig_Hook_AppExit(void)
+BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
 {
-    /* Initialize config menu state */
-    sTemp = sSaved;
-    sCursorPos = 0;
-    sConfirmed = 0;
-    sMenuActive = 1;
-    sDrawPending = 1;
-    sDelayCounter = 0;
-    sLastDrawVBlank = gSystem.vblankCounter;
+    (void)man; (void)state;
 
-    /* Register SysTask to handle menu lifecycle */
-    if (!sMenuTask) {
-        sMenuTask = CreateSysTask(ConfigMenuTaskCB, NULL, 0);
-    }
+    /* Destroy overlay 36 heap to free VRAM/memory for menu */
+    Heap_Destroy(36);
 
-    /* Block until player confirms/cancels — SysTask runs on VBlank */
-    while (sMenuActive) {
-        OS_WaitIrq(TRUE, 1);  /* OS_IE_V_BLANK = 1 */
-    }
+    /* Set callback: SysTask will call this after player confirms menu */
+    sPostMenuCallback = LoadOakSpeechAfterMenu;
 
-    /* Clean up graphics after menu closes */
-    if (sGfxInitDone) {
-        MenuGfx_Shutdown();
-    }
+    /* Start config menu via SysTask (non-blocking) */
+    NewGameConfig_TriggerOnNewGame();
 
-    /* Destroy SysTask */
-    if (sMenuTask) {
-        DestroySysTask(sMenuTask);
-        sMenuTask = NULL;
-    }
-
-    /* Return TRUE to continue loading OakSpeech normally */
+    /* Return immediately — SysTask handles menu lifecycle */
     return TRUE;
 }
 
