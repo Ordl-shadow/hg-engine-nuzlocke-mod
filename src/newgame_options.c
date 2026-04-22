@@ -733,10 +733,10 @@ u8 NewGameConfig_IsTrainerTeamsRandomized(void){ return sSaved.randomize_trainer
 
 /* ---- Menu trigger / control ---------------------------------------------- */
 
-/* ---- Hook function for overlay 36 TitleScreen NewGame exit — shows menu BEFORE OakSpeech ----
+/* ---- Hook function for overlay 1 TitleScreen NewGame exit — shows menu BEFORE OakSpeech ----
  *
  * This is a FULL FUNCTION REPLACEMENT (register 255) of
- * ov36_TitleScreen_NewGame_AppExit at 0x021E5B48.
+ * ov01_TitleScreen_NewGame_AppExit at 0x021E5B48.
  *
  * We block in this function until the player confirms/cancels the menu,
  * then load OakSpeech and return.  The blocking loop uses OS_WaitIrq
@@ -746,6 +746,34 @@ u8 NewGameConfig_IsTrainerTeamsRandomized(void){ return sSaved.randomize_trainer
 BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
 {
     (void)man; (void)state;
+
+    /* ---- Init menu state ---- */
+    sTemp           = sSaved;
+    sCursorPos      = 0;
+    sConfirmed      = 0;
+    sMenuActive     = 1;
+    sDrawPending    = 1;
+    sDelayCounter   = 0;
+    sLastDrawVBlank = gSystem.vblankCounter;
+
+    /* ---- Init display ---- */
+    MenuGfx_Init();
+
+    /* ---- Blocking loop: wait for player to confirm/cancel ---- */
+    while (sMenuActive) {
+        /* Service system tasks (VBlank, input, etc.) */
+        OS_WaitIrq(TRUE, OS_IE_V_BLANK);
+        
+        /* Run our menu task callback manually in the hook context */
+        ConfigMenuTaskCB(NULL, NULL);
+    }
+
+    /* ---- Menu closed: load OakSpeech ---- */
+    LoadOakSpeechAfterMenu();
+
+    /* ---- Clean up display state for OakSpeech ---- */
+    MenuGfx_Shutdown();
+
     return TRUE;
 }
 
