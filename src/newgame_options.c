@@ -242,11 +242,6 @@ static void DrawLoading(void)
 /* ---- Post-menu callback -------------------------------------------------- */
 static void (*sPostMenuCallback)(void) = NULL;
 
-static void LONG_CALL LoadOakSpeechAfterMenu(void)
-{
-    RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
-}
-
 /* External declarations for overlay 36 hook */
 extern const void *gApplication_OakSpeech;
 extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
@@ -256,21 +251,6 @@ static void LONG_CALL LoadOakSpeechAfterMenu(void)
 {
     RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
 }
-
-/* External declarations for overlay 36 hook */
-extern const void *gApplication_OakSpeech;
-extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
-extern void LONG_CALL Heap_Destroy(u32 heapId);
-
-static void LONG_CALL LoadOakSpeechAfterMenu(void)
-{
-    RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
-}
-
-/* External declarations for overlay 36 hook */
-extern const void *gApplication_OakSpeech;
-extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
-extern void LONG_CALL Heap_Destroy(u32 heapId);
 
 /* ---- Text-based menu rendering ------------------------------------------- */
 
