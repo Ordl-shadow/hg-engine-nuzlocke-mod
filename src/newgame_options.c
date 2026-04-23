@@ -257,10 +257,24 @@ static void LONG_CALL LoadOakSpeechAfterMenu(void)
 #define ROW_HEIGHT       14   /* Taller rows for readability */
 #define LABEL_X          4    /* Left margin for labels */
 #define VALUE_X          160  /* Right margin for values */
+#define VISIBLE_ROWS     12   /* Maximum rows visible on screen at once */
 
 /* Color-coded value colors matching Radical Red style */
 #define COLOR_VALUE_OFF  COLOUR_RED
 #define COLOR_VALUE_ON   COLOUR_GREEN
+
+static u8 sScrollOffset = 0;
+
+static void UpdateScrollOffset(void)
+{
+    /* Keep cursor within visible window by scrolling */
+    if (sCursorPos < sScrollOffset) {
+        sScrollOffset = sCursorPos;
+    } else if (sCursorPos >= sScrollOffset + VISIBLE_ROWS) {
+        sScrollOffset = sCursorPos - VISIBLE_ROWS + 1;
+    }
+}
+
 
 static void MenuText_PrintAt(const char *text, u8 x, u8 row, u8 fgColor)
 {
@@ -336,7 +350,7 @@ static void MenuText_DrawRow(u8 catIdx, u8 rowOnScreen)
 
 static void MenuText_DrawFooter(void)
 {
-    u8 footerRow = sCatCount + 3;
+    u8 footerRow = VISIBLE_ROWS + 3;  /* Fixed position at bottom of visible area */
     MenuText_PrintAt("A=Confirm  B=Cancel", 4, footerRow, COLOUR_DARK);
     MenuText_PrintAt("UP/DOWN=Nav  L/R=Change", 4, footerRow + 1, COLOUR_DARK);
 }
@@ -347,6 +361,9 @@ static void MenuText_DrawAll(void)
 
     if (!sGfxInitDone) return;
 
+    /* Update scroll position based on cursor */
+    UpdateScrollOffset();
+
     /* Clear window pixel buffer completely */
     FillWindowPixelBuffer(&sWindow, 0);
 
@@ -356,12 +373,13 @@ static void MenuText_DrawAll(void)
     /* Draw header */
     MenuText_DrawHeader();
 
-    /* Draw each category row */
-    for (i = 0; i < sCatCount; i++) {
-        MenuText_DrawRow(i, i + 3);  /* Start at row 3 (after header) */
+    /* Draw visible category rows (scrolled) */
+    for (i = 0; i < VISIBLE_ROWS && (sScrollOffset + i) < sCatCount; i++) {
+        u8 catIdx = sScrollOffset + i;
+        MenuText_DrawRow(catIdx, i + 3);  /* Start at row 3 (after header) */
     }
 
-    /* Draw footer */
+    /* Draw footer at bottom of visible area */
     MenuText_DrawFooter();
 
     /* Immediate VRAM copy for clean update */
@@ -683,9 +701,9 @@ static void ConfigMenuTaskCB(SysTask *task, void *data)
         sDrawPending    = 0;
 
         if (sConfirmed) {
-            /* Flash confirmation */
-            u8 phase = (u8)(gSystem.vblankCounter % 10);
-            SetBackdrop(phase < 5 ? GX_RGB(31, 31, 31) : GX_RGB(31, 0, 0));
+            /* Show confirmation briefly then let loop exit */
+            SetBackdrop(GX_RGB(0, 31, 0));  /* Green flash for success */
+            sDrawPending = 0;
         } else {
             /* Normal: clear backdrop and draw text menu */
             SetBackdrop(GX_RGB(0, 0, 0));
