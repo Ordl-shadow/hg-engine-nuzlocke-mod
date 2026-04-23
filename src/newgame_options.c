@@ -781,10 +781,10 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
         ConfigMenuTaskCB(NULL, NULL);
     }
 
-    /* ---- Menu closed: load OakSpeech ---- */
-    LoadOakSpeechAfterMenu();
-
-    /* ---- Clean up display state for OakSpeech ---- */
+    /* ---- Menu closed: just return and let the game continue ---- */
+    /* NOTE: This hook fires AFTER OakSpeech (post-intro transition).
+     *       Loading OakSpeech again would restart the intro.
+     *       Just clean up and return TRUE to continue to overworld. */
     MenuGfx_Shutdown();
 
     return TRUE;
