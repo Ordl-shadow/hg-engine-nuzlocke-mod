@@ -542,9 +542,22 @@ static void MenuGfx_Shutdown(void)
 
 /* ---- Input handling ------------------------------------------------------ */
 
+/* ---- Direct hardware input polling (for hook context where gSystem.newKeys
+ *  isn't updated by the main loop) --------------------------------------- */
+static u16 sPrevPadState = 0;
+
+static u16 PollInputNewKeys(void)
+{
+    u16 current = PAD_Read();
+    u16 newKeys = current & ~sPrevPadState;
+    sPrevPadState = current;
+    return newKeys;
+}
+
 static void HandleInput(void)
 {
-    u16 keys = (u16)gSystem.newKeys;
+    /* In hook context, gSystem.newKeys isn't updated — poll hardware directly */
+    u16 keys = (gSystem.newKeys) ? (u16)gSystem.newKeys : PollInputNewKeys();
     if (!keys) return;
 
     if (keys & KEY_UP) {
@@ -747,15 +760,6 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
 {
     (void)man; (void)state;
 
-    /* DEBUG: Turn screen red immediately to confirm hook is reached */
-    SetBackdrop(GX_RGB(31, 0, 0));
-
-    /* Spin briefly so the red flash is visible even if we crash */
-    {
-        volatile u32 i;
-        for (i = 0; i < 0x100000; i++) { __asm__("nop"); }
-    }
-
     /* ---- Init menu state ---- */
     sTemp           = sSaved;
     sCursorPos      = 0;
@@ -768,11 +772,14 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
     /* ---- Init display ---- */
     MenuGfx_Init();
 
-    /* DEBUG: Skip menu loop, just show red screen then proceed to OakSpeech */
-    /* while (sMenuActive) { */
-    /*     OS_WaitIrq(TRUE, 1); */
-    /*     ConfigMenuTaskCB(NULL, NULL); */
-    /* } */
+    /* ---- Blocking loop: wait for player to confirm/cancel ---- */
+    while (sMenuActive) {
+        /* Service system tasks (VBlank, input, etc.) */
+        OS_WaitIrq(TRUE, 1);
+        
+        /* Run our menu task callback manually in the hook context */
+        ConfigMenuTaskCB(NULL, NULL);
+    }
 
     /* ---- Menu closed: load OakSpeech ---- */
     LoadOakSpeechAfterMenu();
