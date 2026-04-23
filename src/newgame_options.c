@@ -544,53 +544,96 @@ static void MenuGfx_Shutdown(void)
 
 /* ---- Direct hardware input polling (for hook context where gSystem.newKeys
  *  isn't updated by the main loop) --------------------------------------- */
-static u16 sPrevPadState = 0;
+#define HW_KEYPAD_BUF           ((volatile u16 *)0x027FFFA8)
+#define REPEAT_INITIAL_DELAY    24   /* ~0.4 s at 60 fps */
+#define REPEAT_INTERVAL         6    /* ~10 repeats/sec after delay */
 
-static u16 PollInputNewKeys(void)
+static u16 sPrevHwKeys   = 0;
+static u16 sRepeatKey    = 0;
+static u16 sRepeatTimer  = 0;
+
+static u16 ReadHardwareKeys(void)
 {
-    u16 current = PAD_Read();
-    u16 newKeys = current & ~sPrevPadState;
-    sPrevPadState = current;
-    return newKeys;
+    return ~(*HW_KEYPAD_BUF) & 0x3FF;
 }
 
 static void HandleInput(void)
 {
-    /* In hook context, gSystem.newKeys isn't updated — poll hardware directly */
-    u16 keys = (gSystem.newKeys) ? (u16)gSystem.newKeys : PollInputNewKeys();
-    if (!keys) return;
+    u16 keys    = ReadHardwareKeys();
+    u16 newKeys = keys & ~sPrevHwKeys;
+    u16 action  = 0;
 
-    if (keys & KEY_UP) {
+    /* ---- Choose which key to act on this frame ---- */
+    if (newKeys) {
+        /* Brand-new press: act immediately, reset repeat state */
+        action         = newKeys;
+        sRepeatKey     = 0;
+        sRepeatTimer   = 0;
+    } else if (keys) {
+        /* Keys held — only repeat directional keys (never A/B) */
+        u16 repeatMask = PAD_KEY_UP | PAD_KEY_DOWN | PAD_KEY_LEFT | PAD_KEY_RIGHT;
+        u16 heldRepeat = keys & repeatMask;
+
+        if (heldRepeat) {
+            /* Isolate single key for deterministic repeat */
+            u16 single = heldRepeat & (~heldRepeat + 1);
+
+            if (sRepeatKey != single) {
+                sRepeatKey   = single;
+                sRepeatTimer = 0;
+            } else {
+                sRepeatTimer++;
+                if (sRepeatTimer >= REPEAT_INITIAL_DELAY) {
+                    if ((sRepeatTimer - REPEAT_INITIAL_DELAY) % REPEAT_INTERVAL == 0)
+                        action = single;
+                }
+            }
+        } else {
+            sRepeatKey   = 0;
+            sRepeatTimer = 0;
+        }
+    } else {
+        sRepeatKey   = 0;
+        sRepeatTimer = 0;
+    }
+
+    sPrevHwKeys = keys;
+    if (!action) return;
+
+    /* ---- Navigation ---- */
+    if (action & KEY_UP) {
         if (sCursorPos > 0) sCursorPos--;
         else                sCursorPos = sCatCount - 1;
         sDrawPending = 1;
     }
-    if (keys & KEY_DOWN) {
+    if (action & KEY_DOWN) {
         if (sCursorPos < sCatCount - 1) sCursorPos++;
         else                            sCursorPos = 0;
         sDrawPending = 1;
     }
-    if (keys & KEY_LEFT) {
+    if (action & KEY_LEFT) {
         u8 *v = GetField(&sTemp, sCursorPos);
         if (*v > 0) (*v)--;
         else        *v = sCatMax[sCursorPos];
         sDrawPending = 1;
     }
-    if (keys & KEY_RIGHT) {
+    if (action & KEY_RIGHT) {
         u8 *v = GetField(&sTemp, sCursorPos);
         if (*v < sCatMax[sCursorPos]) (*v)++;
         else                          *v = 0;
         sDrawPending = 1;
     }
-    if (keys & KEY_A) {
-        sConfirmed   = 1;
-        sMenuActive  = 0;
-        NewGameConfig_Save();
+
+    /* ---- Confirm / Cancel ---- */
+    if (action & KEY_A) {
+        sConfirmed  = 1;
+        sMenuActive = 0;
+        NewGameConfig_Save();   /* copies sTemp -> sSaved */
         sDrawPending = 1;
     }
-    if (keys & KEY_B) {
-        sMenuActive  = 0;
-        NewGameConfig_InitDefaults(&sSaved);
+    if (action & KEY_B) {
+        sMenuActive = 0;
+        NewGameConfig_InitDefaults(&sSaved); /* cancel = revert to defaults */
         sDrawPending = 1;
     }
 }
