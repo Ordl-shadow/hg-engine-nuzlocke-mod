@@ -562,24 +562,26 @@ static void MenuGfx_Shutdown(void)
 
 /* ---- Direct hardware input polling (for hook context where gSystem.newKeys
  *  isn't updated by the main loop) --------------------------------------- */
-#define HW_KEYPAD_BUF           ((volatile u16 *)0x027FFFA8)
 #define REPEAT_INITIAL_DELAY    24   /* ~0.4 s at 60 fps */
 #define REPEAT_INTERVAL         6    /* ~10 repeats/sec after delay */
 
 static u16 sPrevHwKeys   = 0;
 static u16 sRepeatKey    = 0;
 static u16 sRepeatTimer  = 0;
-
-static u16 ReadHardwareKeys(void)
-{
-    return ~(*HW_KEYPAD_BUF) & 0x3FF;
-}
+static u8  sWaitForKeyRelease = 0;
 
 static void HandleInput(void)
 {
-    u16 keys    = ReadHardwareKeys();
+    u16 keys    = PAD_Read();
     u16 newKeys = keys & ~sPrevHwKeys;
     u16 action  = 0;
+
+    /* ---- Key-release guard: ignore input until all keys are released ---- */
+    if (sWaitForKeyRelease) {
+        if (keys == 0) sWaitForKeyRelease = 0;
+        sPrevHwKeys = keys;
+        return;
+    }
 
     /* ---- Choose which key to act on this frame ---- */
     if (newKeys) {
@@ -829,6 +831,7 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
     sDrawPending    = 1;
     sDelayCounter   = 0;
     sLastDrawVBlank = gSystem.vblankCounter;
+    sWaitForKeyRelease = 1;
 
     /* ---- Init display ---- */
     MenuGfx_Init();
@@ -860,6 +863,7 @@ void NewGameConfig_TriggerOnNewGame(void)
     sDelayCounter   = 0;
     sDrawPending    = 1;
     sLastDrawVBlank = gSystem.vblankCounter;
+    sWaitForKeyRelease = 1;
 
     if (!sMenuTask) {
         sMenuTask = CreateSysTask(ConfigMenuTaskCB, NULL, 0);
