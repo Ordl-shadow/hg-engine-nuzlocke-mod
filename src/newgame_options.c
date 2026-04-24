@@ -380,6 +380,43 @@ static void MenuText_DrawAll(void)
     CopyWindowToVram(&sWindow);
 }
 
+/* ---- Comprehensive display state save/restore ---------------------------
+ *  Per NDS research: must save VRAM banks, BG registers, then DISPCNT.
+ *  Restore order: VRAM banks FIRST, then BG registers, then DISPCNT.
+ *  This prevents extended palette / VRAM bank conflicts.              */
+
+static u32 sSavedDispCnt[2];      /* Engine A, B DISPCNT */
+static u16 sSavedBgCnt[8];        /* BG0-3 main, BG0-3 sub */
+static u16 sSavedBgScroll[8];     /* hofs/vofs for each BG */
+static u8  sSavedVramBanks[9];    /* VRAM banks A-I control regs */
+static void MenuGfx_SaveState(void)
+{
+    u8 i;
+    vu16 *bgcnt = (vu16 *)0x04000008;
+    vu16 *scroll = (vu16 *)0x04000010;
+    vu8 *vram = (vu8 *)0x04000240;
+
+    sSavedDispCnt[0] = *(vu32 *)0x04000000;
+    sSavedDispCnt[1] = *(vu32 *)0x04001000;
+    for (i = 0; i < 8; i++) sSavedBgCnt[i] = bgcnt[i];
+    for (i = 0; i < 8; i++) sSavedBgScroll[i] = scroll[i];
+    for (i = 0; i < 9; i++) sSavedVramBanks[i] = vram[i];
+}
+
+static void MenuGfx_RestoreState(void)
+{
+    u8 i;
+    vu16 *bgcnt = (vu16 *)0x04000008;
+    vu16 *scroll = (vu16 *)0x04000010;
+    vu8 *vram = (vu8 *)0x04000240;
+
+    for (i = 0; i < 9; i++) vram[i] = sSavedVramBanks[i];
+    for (i = 0; i < 8; i++) bgcnt[i] = sSavedBgCnt[i];
+    for (i = 0; i < 8; i++) scroll[i] = sSavedBgScroll[i];
+    *(vu32 *)0x04000000 = sSavedDispCnt[0];
+    *(vu32 *)0x04001000 = sSavedDispCnt[1];
+}
+
 /* ---- Graphics init / teardown -------------------------------------------- */
 
 static void MenuGfx_Init(void)
@@ -387,6 +424,8 @@ static void MenuGfx_Init(void)
     void *bgConfig;
 
     if (sGfxInitDone) return;
+
+    MenuGfx_SaveState();  /* CRITICAL: save original display state */
 
     /* Allocate string buffer for text rendering */
     if (!sMenuStringBuf) {
@@ -469,12 +508,7 @@ static void MenuGfx_Shutdown(void)
     *(vu16 *)0x0400006C = 0;
     *(vu16 *)0x0400106C = 0;
 
-    /* Disable all engine planes and visible planes — leave display clean
-     * so OakSpeech can init from a known state. */
-    GfGfx_DisableEngineAPlanes();
-    GfGfx_DisableEngineBLayers();
-    GX_SetVisiblePlane(0);
-    GXS_SetVisiblePlane(0);
+    MenuGfx_RestoreState();  /* CRITICAL: restore original display state */
 
     sGfxInitDone = 0;
 }
@@ -586,11 +620,6 @@ static void ConfigMenuTaskCB(SysTask *task, void *data)
     (void)task; (void)data;
 
     if (!sMenuActive) {
-        /* Menu just closed: run post-menu callback first, then cleanup */
-        if (sPostMenuCallback) {
-            sPostMenuCallback();
-            sPostMenuCallback = NULL;
-        }
         /* Shut down graphics */
         if (sGfxInitDone) {
             MenuGfx_Shutdown();
@@ -792,24 +821,4 @@ void NewGameConfig_TriggerOnNewGame(void)
     }
 }
 
-u8 NewGameConfig_UpdateMenu(void)
-{
-    if (!sMenuActive) return 0;
-    HandleInput();
-    if (gSystem.vblankCounter - sLastDrawVBlank >= MENU_DRAW_INTERVAL) {
-        sLastDrawVBlank = gSystem.vblankCounter;
-        if (sGfxInitDone) MenuText_DrawAll();
-    }
-    return sConfirmed ? 2 : 1;
-}
 
-void NewGameConfig_OpenMenu(void)
-{
-    NewGameConfig_TriggerOnNewGame();
-}
-
-void NewGameConfig_MainLoopUpdate(void)
-{
-    /* Placeholder: if the caller wants to run the menu in the main loop
-     * instead of via SysTask, call UpdateMenu() here. */
-}
