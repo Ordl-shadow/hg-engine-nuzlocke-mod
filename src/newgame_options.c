@@ -257,7 +257,7 @@ static void LONG_CALL LoadOakSpeechAfterMenu(void)
 #define ROW_HEIGHT       14   /* Taller rows for readability */
 #define LABEL_X          4    /* Left margin for labels */
 #define VALUE_X          160  /* Right margin for values */
-#define VISIBLE_ROWS     12   /* Maximum rows visible on screen at once */
+#define MAX_VISIBLE_ROWS      8   /* Maximum rows visible on screen at once */
 
 /* Color-coded value colors matching Radical Red style */
 #define COLOR_VALUE_OFF  COLOUR_RED
@@ -270,8 +270,8 @@ static void UpdateScrollOffset(void)
     /* Keep cursor within visible window by scrolling */
     if (sCursorPos < sScrollOffset) {
         sScrollOffset = sCursorPos;
-    } else if (sCursorPos >= sScrollOffset + VISIBLE_ROWS) {
-        sScrollOffset = sCursorPos - VISIBLE_ROWS + 1;
+    } else if (sCursorPos >= sScrollOffset + MAX_VISIBLE_ROWS) {
+        sScrollOffset = sCursorPos - MAX_VISIBLE_ROWS + 1;
     }
 }
 
@@ -350,7 +350,7 @@ static void MenuText_DrawRow(u8 catIdx, u8 rowOnScreen)
 
 static void MenuText_DrawFooter(void)
 {
-    u8 footerRow = VISIBLE_ROWS + 3;  /* Fixed position at bottom of visible area */
+    u8 footerRow = MAX_VISIBLE_ROWS + 3;  /* Fixed position at bottom of visible area */
     MenuText_PrintAt("A=Confirm  B=Cancel", 4, footerRow, COLOUR_DARK);
     MenuText_PrintAt("UP/DOWN=Nav  L/R=Change", 4, footerRow + 1, COLOUR_DARK);
 }
@@ -374,7 +374,7 @@ static void MenuText_DrawAll(void)
     MenuText_DrawHeader();
 
     /* Draw visible category rows (scrolled) */
-    for (i = 0; i < VISIBLE_ROWS && (sScrollOffset + i) < sCatCount; i++) {
+    for (i = 0; i < MAX_VISIBLE_ROWS && (sScrollOffset + i) < sCatCount; i++) {
         u8 catIdx = sScrollOffset + i;
         MenuText_DrawRow(catIdx, i + 3);  /* Start at row 3 (after header) */
     }
