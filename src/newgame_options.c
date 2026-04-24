@@ -799,9 +799,12 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
     /* This hook replaces ov01_TitleScreen_NewGame_AppExit (0x021E5B48).
      * The original function destroys the TitleScreen heap and
      * registers OakSpeech.  We must do the same. */
+    SetBackdrop(GX_RGB(31, 0, 0)); /* DEBUG: red flash before shutdown */
     MenuGfx_Shutdown();
+    SetBackdrop(GX_RGB(0, 31, 0)); /* DEBUG: green flash after shutdown */
     LoadOakSpeechAfterMenu();
 
+    SetBackdrop(GX_RGB(0, 0, 31)); /* DEBUG: blue flash before return */
     return TRUE;
 }
 
