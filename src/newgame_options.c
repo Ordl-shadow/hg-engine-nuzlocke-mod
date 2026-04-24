@@ -786,8 +786,11 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
     /* NOTE: This hook fires AFTER OakSpeech (post-intro transition).
      *       Loading OakSpeech again would restart the intro.
      *       Just clean up and return TRUE to continue to overworld. */
+    SetBackdrop(GX_RGB(31, 0, 0)); /* DEBUG: red flash before shutdown */
     MenuGfx_Shutdown();
+    SetBackdrop(GX_RGB(0, 31, 0)); /* DEBUG: green flash after shutdown */
 
+    SetBackdrop(GX_RGB(0, 0, 31)); /* DEBUG: blue flash before return */
     return TRUE;
 }
 
