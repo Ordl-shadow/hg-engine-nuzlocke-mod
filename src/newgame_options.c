@@ -233,12 +233,6 @@ static u8 *GetField(struct NewGameConfig *c, u8 idx)
 /* ---- Palette feedback (kept as secondary visual cue) --------------------- */
 static void SetBackdrop(u16 color) { *(vu16 *)0x05000000 = color; }
 
-static void DrawLoading(void)
-{
-    u8 phase = (u8)(gSystem.vblankCounter % 20);
-    SetBackdrop(phase < 10 ? GX_RGB(0, 31, 0) : GX_RGB(0, 0, 0));   /* Green / Black */
-}
-
 /* ---- Post-menu callback -------------------------------------------------- */
 static void (*sPostMenuCallback)(void) = NULL;
 
@@ -386,86 +380,6 @@ static void MenuText_DrawAll(void)
     CopyWindowToVram(&sWindow);
 }
 
-/* ---- Comprehensive display state save/restore ---------------------------
- *  Per NDS research: must save VRAM banks, BG registers, then DISPCNT.
- *  Restore order: VRAM banks FIRST, then BG registers, then DISPCNT.
- *  This prevents extended palette / VRAM bank conflicts.              */
-
-static u32 sSavedDispCnt[2];      /* Engine A, B DISPCNT */
-static u16 sSavedBgCnt[8];        /* BG0-3 main, BG0-3 sub */
-static u32 sSavedBgScroll[8];     /* hofs/vofs for each BG */
-static u8  sSavedVramBanks[9];    /* VRAM banks A-I control regs */
-
-static void MenuGfx_SaveState(void)
-{
-    u8 i;
-
-    /* 1. Save DISPCNT */
-    sSavedDispCnt[0] = *(vu32 *)0x04000000;  /* Engine A */
-    sSavedDispCnt[1] = *(vu32 *)0x04001000;  /* Engine B */
-
-    /* 2. Save BG control registers */
-    sSavedBgCnt[0] = *(vu16 *)0x04000008;  /* BG0CNT A */
-    sSavedBgCnt[1] = *(vu16 *)0x0400000A;  /* BG1CNT A */
-    sSavedBgCnt[2] = *(vu16 *)0x0400000C;  /* BG2CNT A */
-    sSavedBgCnt[3] = *(vu16 *)0x0400000E;  /* BG3CNT A */
-    sSavedBgCnt[4] = *(vu16 *)0x04001008;  /* BG0CNT B */
-    sSavedBgCnt[5] = *(vu16 *)0x0400100A;  /* BG1CNT B */
-    sSavedBgCnt[6] = *(vu16 *)0x0400100C;  /* BG2CNT B */
-    sSavedBgCnt[7] = *(vu16 *)0x0400100E;  /* BG3CNT B */
-
-    /* 3. Save BG scroll registers */
-    sSavedBgScroll[0] = *(vu16 *)0x04000010;  /* BG0HOFS A */
-    sSavedBgScroll[1] = *(vu16 *)0x04000012;  /* BG0VOFS A */
-    sSavedBgScroll[2] = *(vu16 *)0x04000014;  /* BG1HOFS A */
-    sSavedBgScroll[3] = *(vu16 *)0x04000016;  /* BG1VOFS A */
-    sSavedBgScroll[4] = *(vu16 *)0x04000018;  /* BG2HOFS A */
-    sSavedBgScroll[5] = *(vu16 *)0x0400001A;  /* BG2VOFS A */
-    sSavedBgScroll[6] = *(vu16 *)0x0400001C;  /* BG3HOFS A */
-    sSavedBgScroll[7] = *(vu16 *)0x0400001E;  /* BG3VOFS A */
-
-    /* 4. Save VRAM bank configuration */
-    for (i = 0; i < 9; i++) {
-        sSavedVramBanks[i] = *(vu8 *)(0x04000240 + i);
-    }
-}
-
-static void MenuGfx_RestoreState(void)
-{
-    u8 i;
-
-    /* CRITICAL restore order: VRAM banks FIRST, then BG, then DISPCNT */
-
-    /* 1. Restore VRAM bank configuration FIRST */
-    for (i = 0; i < 9; i++) {
-        *(vu8 *)(0x04000240 + i) = sSavedVramBanks[i];
-    }
-
-    /* 2. Restore BG control registers */
-    *(vu16 *)0x04000008 = sSavedBgCnt[0];
-    *(vu16 *)0x0400000A = sSavedBgCnt[1];
-    *(vu16 *)0x0400000C = sSavedBgCnt[2];
-    *(vu16 *)0x0400000E = sSavedBgCnt[3];
-    *(vu16 *)0x04001008 = sSavedBgCnt[4];
-    *(vu16 *)0x0400100A = sSavedBgCnt[5];
-    *(vu16 *)0x0400100C = sSavedBgCnt[6];
-    *(vu16 *)0x0400100E = sSavedBgCnt[7];
-
-    /* 3. Restore BG scroll registers */
-    *(vu16 *)0x04000010 = sSavedBgScroll[0];
-    *(vu16 *)0x04000012 = sSavedBgScroll[1];
-    *(vu16 *)0x04000014 = sSavedBgScroll[2];
-    *(vu16 *)0x04000016 = sSavedBgScroll[3];
-    *(vu16 *)0x04000018 = sSavedBgScroll[4];
-    *(vu16 *)0x0400001A = sSavedBgScroll[5];
-    *(vu16 *)0x0400001C = sSavedBgScroll[6];
-    *(vu16 *)0x0400001E = sSavedBgScroll[7];
-
-    /* 4. Restore DISPCNT LAST */
-    *(vu32 *)0x04000000 = sSavedDispCnt[0];
-    *(vu32 *)0x04001000 = sSavedDispCnt[1];
-}
-
 /* ---- Graphics init / teardown -------------------------------------------- */
 
 static void MenuGfx_Init(void)
@@ -473,8 +387,6 @@ static void MenuGfx_Init(void)
     void *bgConfig;
 
     if (sGfxInitDone) return;
-
-    MenuGfx_SaveState(); /* CRITICAL: capture original display state before nuking it */
 
     /* Allocate string buffer for text rendering */
     if (!sMenuStringBuf) {
@@ -557,7 +469,12 @@ static void MenuGfx_Shutdown(void)
     *(vu16 *)0x0400006C = 0;
     *(vu16 *)0x0400106C = 0;
 
-    MenuGfx_RestoreState(); /* CRITICAL: restore original display state before returning to game */
+    /* Disable all engine planes and visible planes — leave display clean
+     * so OakSpeech can init from a known state. */
+    GfGfx_DisableEngineAPlanes();
+    GfGfx_DisableEngineBLayers();
+    GX_SetVisiblePlane(0);
+    GXS_SetVisiblePlane(0);
 
     sGfxInitDone = 0;
 }
@@ -849,11 +766,12 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
         ConfigMenuTaskCB(NULL, NULL);
     }
 
-    /* ---- Menu closed: just return and let the game continue ---- */
-    /* NOTE: This hook fires AFTER OakSpeech (post-intro transition).
-     *       Loading OakSpeech again would restart the intro.
-     *       Just clean up and return TRUE to continue to overworld. */
+    /* ---- Menu closed: register OakSpeech and clean up ---- */
+    /* This hook replaces ov01_TitleScreen_NewGame_AppExit (0x021E5B48).
+     * The original function destroys the TitleScreen heap and
+     * registers OakSpeech.  We must do the same. */
     MenuGfx_Shutdown();
+    LoadOakSpeechAfterMenu();
 
     return TRUE;
 }
