@@ -474,6 +474,8 @@ static void MenuGfx_Init(void)
 
     if (sGfxInitDone) return;
 
+    MenuGfx_SaveState(); /* CRITICAL: capture original display state before nuking it */
+
     /* Allocate string buffer for text rendering */
     if (!sMenuStringBuf) {
         sMenuStringBuf = String_New(128, 0);
@@ -554,6 +556,8 @@ static void MenuGfx_Shutdown(void)
     /* Restore master brightness to neutral for OakSpeech */
     *(vu16 *)0x0400006C = 0;
     *(vu16 *)0x0400106C = 0;
+
+    MenuGfx_RestoreState(); /* CRITICAL: restore original display state before returning to game */
 
     sGfxInitDone = 0;
 }
