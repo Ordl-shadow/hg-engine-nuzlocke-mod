@@ -233,19 +233,6 @@ static u8 *GetField(struct NewGameConfig *c, u8 idx)
 /* ---- Palette feedback (kept as secondary visual cue) --------------------- */
 static void SetBackdrop(u16 color) { *(vu16 *)0x05000000 = color; }
 
-/* ---- Post-menu callback -------------------------------------------------- */
-static void (*sPostMenuCallback)(void) = NULL;
-
-/* External declarations for overlay 36 hook */
-extern const void *gApplication_OakSpeech;
-extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
-extern void LONG_CALL Heap_Destroy(u32 heapId);
-
-static void LONG_CALL LoadOakSpeechAfterMenu(void)
-{
-    RegisterMainOverlay(0xFFFFFFFF, &gApplication_OakSpeech);
-}
-
 /* ---- Text-based menu rendering ------------------------------------------- */
 
 #define ROW_HEIGHT       14   /* Taller rows for readability */
@@ -380,43 +367,6 @@ static void MenuText_DrawAll(void)
     CopyWindowToVram(&sWindow);
 }
 
-/* ---- Comprehensive display state save/restore ---------------------------
- *  Per NDS research: must save VRAM banks, BG registers, then DISPCNT.
- *  Restore order: VRAM banks FIRST, then BG registers, then DISPCNT.
- *  This prevents extended palette / VRAM bank conflicts.              */
-
-static u32 sSavedDispCnt[2];      /* Engine A, B DISPCNT */
-static u16 sSavedBgCnt[8];        /* BG0-3 main, BG0-3 sub */
-static u16 sSavedBgScroll[8];     /* hofs/vofs for each BG */
-static u8  sSavedVramBanks[9];    /* VRAM banks A-I control regs */
-static void MenuGfx_SaveState(void)
-{
-    u8 i;
-    vu16 *bgcnt = (vu16 *)0x04000008;
-    vu16 *scroll = (vu16 *)0x04000010;
-    vu8 *vram = (vu8 *)0x04000240;
-
-    sSavedDispCnt[0] = *(vu32 *)0x04000000;
-    sSavedDispCnt[1] = *(vu32 *)0x04001000;
-    for (i = 0; i < 8; i++) sSavedBgCnt[i] = bgcnt[i];
-    for (i = 0; i < 8; i++) sSavedBgScroll[i] = scroll[i];
-    for (i = 0; i < 9; i++) sSavedVramBanks[i] = vram[i];
-}
-
-static void MenuGfx_RestoreState(void)
-{
-    u8 i;
-    vu16 *bgcnt = (vu16 *)0x04000008;
-    vu16 *scroll = (vu16 *)0x04000010;
-    vu8 *vram = (vu8 *)0x04000240;
-
-    for (i = 0; i < 9; i++) vram[i] = sSavedVramBanks[i];
-    for (i = 0; i < 8; i++) bgcnt[i] = sSavedBgCnt[i];
-    for (i = 0; i < 8; i++) scroll[i] = sSavedBgScroll[i];
-    *(vu32 *)0x04000000 = sSavedDispCnt[0];
-    *(vu32 *)0x04001000 = sSavedDispCnt[1];
-}
-
 /* ---- Graphics init / teardown -------------------------------------------- */
 
 static void MenuGfx_Init(void)
@@ -424,8 +374,6 @@ static void MenuGfx_Init(void)
     void *bgConfig;
 
     if (sGfxInitDone) return;
-
-    MenuGfx_SaveState();  /* CRITICAL: save original display state */
 
     /* Allocate string buffer for text rendering */
     if (!sMenuStringBuf) {
@@ -504,11 +452,18 @@ static void MenuGfx_Shutdown(void)
         sBgConfig = NULL;
     }
 
-    /* Restore master brightness to neutral for OakSpeech */
+    /* CRITICAL: Disable both displays before returning to game.
+     * OakSpeech has completed; the field system will init the
+     * display fresh.  We must not leave any corrupted state. */
+    *(vu32 *)0x04000000 = 0;   /* Engine A DISPCNT = off */
+    *(vu32 *)0x04001000 = 0;   /* Engine B DISPCNT = off */
+
+    /* Wait one VBlank for hardware to settle after display disable */
+    OS_WaitIrq(TRUE, 1);
+
+    /* Reset master brightness to neutral */
     *(vu16 *)0x0400006C = 0;
     *(vu16 *)0x0400106C = 0;
-
-    MenuGfx_RestoreState();  /* CRITICAL: restore original display state */
 
     sGfxInitDone = 0;
 }
@@ -759,14 +714,12 @@ u8 NewGameConfig_IsTrainerTeamsRandomized(void){ return sSaved.randomize_trainer
 
 /* ---- Menu trigger / control ---------------------------------------------- */
 
-/* ---- Hook function for overlay 1 TitleScreen NewGame exit — shows menu BEFORE OakSpeech ----
+/* ---- Hook function — POST-OakSpeech field transition ---------------------
  *
- * This is a FULL FUNCTION REPLACEMENT (register 255) of
- * ov01_TitleScreen_NewGame_AppExit at 0x021E5B48.
- *
- * We block in this function until the player confirms/cancels the menu,
- * then load OakSpeech and return.  The blocking loop uses OS_WaitIrq
- * (sleep until VBlank) so it is not a busy-wait.
+ * The menu appears AFTER Professor Oak's intro, during the fade-to-black
+ * transition before the player enters the overworld.  We block here
+ * until the player configures settings, then clean up and let the
+ * field system continue normally.
  */
 
 BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
@@ -795,16 +748,8 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
         ConfigMenuTaskCB(NULL, NULL);
     }
 
-    /* ---- Menu closed: register OakSpeech and clean up ---- */
-    /* This hook replaces ov01_TitleScreen_NewGame_AppExit (0x021E5B48).
-     * The original function destroys the TitleScreen heap and
-     * registers OakSpeech.  We must do the same. */
-    SetBackdrop(GX_RGB(31, 0, 0)); /* DEBUG: red flash before shutdown */
+    /* ---- Menu closed: clean up and return to field system ---- */
     MenuGfx_Shutdown();
-    SetBackdrop(GX_RGB(0, 31, 0)); /* DEBUG: green flash after shutdown */
-    LoadOakSpeechAfterMenu();
-
-    SetBackdrop(GX_RGB(0, 0, 31)); /* DEBUG: blue flash before return */
     return TRUE;
 }
 
