@@ -51,6 +51,7 @@ ArchiveDataLoad = 0x02007509;
 Heap_Destroy = 0x0201AA24 | 1;
 RegisterMainOverlay = 0x020F6234 | 1;
 gApplication_OakSpeech = 0x02106068;
+gApplication_NewGameFieldsys = 0x02106078;
 ArchiveDataLoadMallocOfs = 0x0200757C | 1;
 NARC_ctor = 0x02007688 | 1;
 ArchiveDataLoadOfs = 0x02007560 | 1;

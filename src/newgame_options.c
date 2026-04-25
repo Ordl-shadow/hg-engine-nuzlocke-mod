@@ -233,6 +233,14 @@ static u8 *GetField(struct NewGameConfig *c, u8 idx)
 /* ---- Palette feedback (kept as secondary visual cue) --------------------- */
 static void SetBackdrop(u16 color) { *(vu16 *)0x05000000 = color; }
 
+struct OverlayManagerTemplate;
+typedef struct OverlayManagerTemplate OverlayManagerTemplate;
+extern void LONG_CALL RegisterMainOverlay(u32 ovyId, const void *template);
+extern void LONG_CALL Heap_Destroy(u32 heapId);
+extern const OverlayManagerTemplate gApplication_NewGameFieldsys;
+#define HEAPID_OV36 36
+#define FS_OVERLAY_ID_NONE ((u32)-1)
+
 /* ---- Text-based menu rendering ------------------------------------------- */
 
 #define ROW_HEIGHT       14   /* Taller rows for readability */
@@ -451,15 +459,6 @@ static void MenuGfx_Shutdown(void)
         sys_FreeMemoryEz(sBgConfig);
         sBgConfig = NULL;
     }
-
-    /* CRITICAL: Disable both displays before returning to game.
-     * OakSpeech has completed; the field system will init the
-     * display fresh.  We must not leave any corrupted state. */
-    *(vu32 *)0x04000000 = 0;   /* Engine A DISPCNT = off */
-    *(vu32 *)0x04001000 = 0;   /* Engine B DISPCNT = off */
-
-    /* Wait one VBlank for hardware to settle after display disable */
-    OS_WaitIrq(TRUE, 1);
 
     /* Reset master brightness to neutral */
     *(vu16 *)0x0400006C = 0;
@@ -750,6 +749,8 @@ BOOL LONG_CALL NewGameConfig_Hook_AppExit(void *man, int *state)
 
     /* ---- Menu closed: clean up and return to field system ---- */
     MenuGfx_Shutdown();
+    Heap_Destroy(HEAPID_OV36);
+    RegisterMainOverlay(FS_OVERLAY_ID_NONE, &gApplication_NewGameFieldsys);
     return TRUE;
 }
 
